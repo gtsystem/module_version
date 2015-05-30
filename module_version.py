@@ -1,20 +1,20 @@
-__version__ = "{tag}"
-__revision__ = ""
+__version__ = '{tag}'
+__revision__ = ''
 
 import os
 import sys
 import os.path as os_path
 import re
 import subprocess
-import setuptools
-from distutils.command.build import build
+from distutils.core import Command
+from distutils.command.build_py import build_py as _build_py
 
-RE_VERSION = re.compile(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
-RE_REVISION = re.compile(r'^__revision__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
+RE_VERSION = re.compile(br'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
+RE_REVISION = re.compile(br'^__revision__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
 
 
 def get_version(fname):
-    with open(fname, "r") as f:
+    with open(fname, "rb") as f:
         content = f.read()
     g = RE_VERSION.search(content)
     if g is None:
@@ -23,13 +23,14 @@ def get_version(fname):
     
 
 def replace_info_file(fname, version, revision):
-    with open(fname, "r") as f:
+    with open(fname, "rb") as f:
         content = f.read()
-    content = RE_VERSION.sub("__version__ = '{}'".format(version), content, count=1)
+    content = RE_VERSION.sub(b"__version__ = '{}'".format(version), content, count=1)
     def rev(arg):
-        return "__revision__ = '{}'".format(revision(), count=1)
+        return b"__revision__ = '{}'".format(revision(), count=1)
     content = RE_REVISION.sub(rev, content)
-    with open(fname, "w") as f:
+    os.unlink(fname)
+    with open(fname, "wb") as f:
         f.write(content)
 
 
@@ -47,31 +48,39 @@ class Version(object):
         return os.environ['BUILD_NUMBER']
     
     @staticmethod
-    def tag():
+    def version_from_parts(major=None, minor=None, dirty=None):
+        parts = []
+        if major:
+            parts.append(major)
+        if minor or dirty:
+            parts.append("{}{}".format(minor if minor else "0", "dev" if dirty else ""))
+        return ".".join(parts)
+    
+    @classmethod
+    def tag(cls):
         version = subprocess.check_output("git describe --tags --dirty --always", shell=True).strip()
         parts = version.split("-")
+        dirty = minor = None 
         if parts[-1] == "dirty":
             parts = parts[:-1]
             dirty = True  
-        else:
-            dirty = False      
+
         major = parts[0].lstrip("v")
         if len(parts) > 1:
             minor = parts[1]
-        else:
-            minor = "0"
-        return "{}.{}{}".format(major, minor, "dev" if dirty else "")
     
+        return cls.version_from_parts(major=major, minor=minor, dirty=dirty)
+
     @staticmethod
     def revision():
         revision = subprocess.check_output("git rev-parse --short `git rev-list -1 HEAD -- .`", shell=True).strip()
         return revision
     
-    @staticmethod
-    def commits():
+    @classmethod
+    def commits(cls):
         minor = subprocess.check_output("git rev-list HEAD --count .", shell=True).strip()
         dirty = subprocess.call("git diff-index --quiet HEAD .", shell=True) != 0
-        return "{}{}".format(minor, "dev" if dirty else "")
+        return cls.version_from_parts(minor=minor, dirty=dirty)
         
     @classmethod
     def format(cls, version):
@@ -80,60 +89,81 @@ class Version(object):
         return version.format(**attribs)
 
 
-class Versioned(setuptools.Command):
-    """setuptools Command"""
-    description = "Update file version in the build folder"
-    user_options = [
-        ('version-file=', None, "file where the version is stored"),
-    ]
-
-    def initialize_options(self):
-        self.version_file = None
-        self.build_lib = None
-        self.set_undefined_options('build', ('build_lib', 'build_lib'))
-        
-    def finalize_options(self):
-        pass
-
-    def run(self):
-        if self.version_file is None:
-            return
-        version = self.distribution.metadata.version
-        fname = os_path.join(self.build_lib, self.version_file)
-        replace_info_file(fname, version, Version.revision)
-        print "File {} updated with version {}".format(fname, version)
+def subclassed_build_py(_build_py):
+    class build_py(_build_py):
+        """setuptools Command"""
+        def run(self):
+            _build_py.run(self)
+            version_file = getattr(self.distribution.metadata, "version_file", None)
+            if version_file is None:
+                return
+            version = self.distribution.metadata.version
+            fname = os_path.join(self.build_lib, version_file)
+            replace_info_file(fname, version, Version.revision)
+            print "File {} updated with version {}".format(fname, version)
+    
+    return build_py
 
 
-class BuildIfChanged(setuptools.Command):
+def subclassed_sdist(_sdist):
+    class sdist(_sdist):
+        def make_release_tree(self, base_dir, files):
+            print files
+            version_file = getattr(self.distribution.metadata, "version_file", None)
+            _sdist.make_release_tree(self, base_dir, files)
+            if version_file is None:
+                return
+
+            fname = os_path.join(base_dir, version_file)
+            version = self.distribution.metadata.version
+            replace_info_file(fname, version, Version.revision)
+            print "File {} updated with version {}".format(fname, version)
+    
+    return sdist
+
+class BuildIfChanged(Command):
     """setuptools Command"""
     description = "build only if version changed"
     user_options = []
 
     def initialize_options(self):
-        self.version_file = None
         self.build_lib = None
-        self.set_undefined_options('versioned', ('version_file', 'version_file'))
         self.set_undefined_options('build', ('build_lib', 'build_lib'))
         
     def finalize_options(self):
         pass
 
     def run(self):
-        if self.version_file is None:
+        version_file = getattr(self.distribution.metadata, "version_file", None)
+        if version_file is None:
             return
         version = self.distribution.metadata.version
-        fname = os_path.join(self.build_lib, self.version_file)
+        fname = os_path.join(self.build_lib, version_file)
         last_version = get_version(fname)
         if last_version == version:
             print "Version {} not changed. Build stopped, remove 'if_changed' to force.".format(last_version)
             sys.exit()
         print "Version changed from {} to {}".format(last_version, version)
 
+def version_file(version, source=True):
+    if isinstance(version, tuple):
+        return version[0] if source else version[1]
+    return version
 
 def validate_version(dist, attr, value):
-    old_version = dist.metadata.version
-    dist.metadata.version = Version.format(dist.metadata.version)
-    sub_command = ("versioned", None)
-    if sub_command not in build.sub_commands:
-        build.sub_commands.append(sub_command)
+    original_version = dist.metadata.version
+    src_version_file = version_file(original_version)
+    if not src_version_file.endswith(".py"):
+        return
+    dist.metadata.version_file = version_file(original_version, source=False)
+    original_version = get_version(src_version_file)
+    dist.metadata.version = Version.format(original_version)
+    
+    if "setuptools" in sys.modules:
+        from setuptools.command.sdist import sdist as _sdist
+    else:
+        from distutils.command.sdist import sdist as _sdist
+        
+    dist.cmdclass["sdist"] = subclassed_sdist(dist.cmdclass.get("sdist", _sdist))
+    dist.cmdclass["build_py"] = subclassed_build_py(dist.cmdclass.get("build_py", _build_py))
 

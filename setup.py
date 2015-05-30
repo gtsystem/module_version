@@ -1,8 +1,7 @@
 from setuptools import setup
-from module_version import get_version
 
 setup(name='module_version',
-    version=get_version("module_version.py"),
+    version="module_version.py",
     author='Giuseppe Tribulato',
     author_email='gtsystem@gmail.com',
     url='https://github.com/gtsystem/module_version',
@@ -13,6 +12,7 @@ setup(name='module_version',
         'distutils.commands': [
             'versioned = module_version:Versioned',
             'if_changed = module_version:BuildIfChanged',
+            'sdist_versioned = module_version:sdist',
         ]
     }
 )
