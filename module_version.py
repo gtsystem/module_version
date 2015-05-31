@@ -10,7 +10,7 @@ from distutils.core import Command
 from distutils.command.build_py import build_py as _build_py
 
 RE_VERSION = re.compile(br'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
-RE_REVISION = re.compile(br'^__revision__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
+RE_REVISION = re.compile(br'^__revision__\s*=\s*[\'"][\'"]', re.M)
 
 
 def get_version(fname):
