@@ -8,6 +8,7 @@ import re
 import subprocess
 from distutils.core import Command
 from distutils.command.build_py import build_py as _build_py
+from distutils.errors import DistutilsOptionError
 
 RE_VERSION = re.compile(br'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
 RE_REVISION = re.compile(br'^__revision__\s*=\s*[\'"][\'"]', re.M)
@@ -33,6 +34,9 @@ def replace_info_file(fname, version, revision):
     with open(fname, "wb") as f:
         f.write(content)
 
+def write_version(fname, version):
+    with open(fname, "wb") as f:
+        f.write(version)
 
 class LazyFormat(object):
     def __init__(self, method):
@@ -91,7 +95,11 @@ class Version(object):
 
 def subclassed_build_py(_build_py):
     class build_py(_build_py):
-        """setuptools Command"""
+        def initialize_options(self):
+            _build_py.initialize_options(self)
+            self.last_version_file = None
+            self.set_undefined_options('if_changed', ('last_version_file', 'last_version_file'))
+        
         def run(self):
             _build_py.run(self)
             version_file = getattr(self.distribution.metadata, "version_file", None)
@@ -100,6 +108,8 @@ def subclassed_build_py(_build_py):
             version = self.distribution.metadata.version
             fname = os_path.join(self.build_lib, version_file)
             replace_info_file(fname, version, Version.revision)
+            if self.last_version_file:
+                write_version(self.last_version_file, version)
             print "File {} updated with version {}".format(fname, version)
     
     return build_py
@@ -107,6 +117,11 @@ def subclassed_build_py(_build_py):
 
 def subclassed_sdist(_sdist):
     class sdist(_sdist):
+        def initialize_options(self):
+            _build_py.initialize_options(self)
+            self.last_version_file = None
+            self.set_undefined_options('if_changed', ('last_version_file', 'last_version_file'))
+
         def make_release_tree(self, base_dir, files):
             print files
             version_file = getattr(self.distribution.metadata, "version_file", None)
@@ -117,6 +132,8 @@ def subclassed_sdist(_sdist):
             fname = os_path.join(base_dir, version_file)
             version = self.distribution.metadata.version
             replace_info_file(fname, version, Version.revision)
+            if self.last_version_file:
+                write_version(self.last_version_file, version)
             print "File {} updated with version {}".format(fname, version)
     
     return sdist
@@ -124,26 +141,26 @@ def subclassed_sdist(_sdist):
 class BuildIfChanged(Command):
     """setuptools Command"""
     description = "build only if version changed"
-    user_options = []
+    user_options = [("last-version-file=", None, "Cache file to store last built version")]
 
     def initialize_options(self):
-        self.build_lib = None
-        self.set_undefined_options('build', ('build_lib', 'build_lib'))
+        self.last_version_file = None
         
     def finalize_options(self):
-        pass
+        if self.last_version_file is None:
+            raise DistutilsOptionError("Parameter 'last_version_file' is required for command 'is_changed'")
 
     def run(self):
-        version_file = getattr(self.distribution.metadata, "version_file", None)
-        if version_file is None:
-            return
+        print self.last_version_file
         version = self.distribution.metadata.version
-        fname = os_path.join(self.build_lib, version_file)
-        last_version = get_version(fname)
-        if last_version == version:
-            print "Version {} not changed. Build stopped, remove 'if_changed' to force.".format(last_version)
-            sys.exit()
-        print "Version changed from {} to {}".format(last_version, version)
+        if self.last_version_file and os_path.isfile(self.last_version_file):
+            with open(self.last_version_file, "r") as f:
+                last_version = f.read().strip()
+    
+            if last_version == version:
+                print "Version {} not changed. Build stopped, remove 'if_changed' to force.".format(last_version)
+                sys.exit()
+            print "Version changed from {} to {}".format(last_version, version)
 
 def version_file(version, source=True):
     if isinstance(version, tuple):
