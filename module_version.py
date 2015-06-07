@@ -48,6 +48,7 @@ def write_version(fname, version):
     with open(fname, "wb") as f:
         f.write(version)
 
+
 class LazyFormat(object):
     def __init__(self, method):
         self.method = method
@@ -174,10 +175,12 @@ class BuildIfChanged(Command):
                 sys.exit()
             print "Version changed from {} to {}".format(last_version, version)
 
+
 def version_file(version, source=True):
     if isinstance(version, tuple):
         return version[0] if source else version[1]
     return version
+
 
 def validate_version(dist, attr, value):
     original_version = dist.metadata.version
