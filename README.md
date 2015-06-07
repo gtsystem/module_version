@@ -14,7 +14,7 @@ Module version is inspired by [Versioneer](https://github.com/warner/python-vers
 	- Git version: Use only the number of commits on the module directory.
 	- Jenkins version: Take the version from the environment variable `BUILD_NUMBER`.
 - Keep track of the relationship between git commit and version in the `__revision__` variable.
-
+- Build only if version changed functionality.
 
 ## Installation and configuration
 
@@ -45,12 +45,13 @@ Sometime this operation is complicated because it require the execution of the m
 
 ### Configure your setup script
 
-`module-version` sove the described problem for you. Just set the version to point to the python file where the version is located; In this example `my_module.py`:
+`module-version` solve the described problem for you: Just set the version to point to the python file where the version is located; In this example `my_module.py`:
 
 ```python
 from setuptools import setup
 	
-setup(name='my_module',
+setup(
+	name='my_module',
    	version = 'my_module.py',
    	... 
 )
@@ -100,7 +101,7 @@ If your setup.py is running inside a jenkins job and the build is `43` your fina
 
 ### Build and release
 
-When is time to build a distribution package, the correct version will be automatically used for the package name and included in the distributed module source code.
+When is time to build a distribution package, the correct version will be automatically used for the package name and included in the distributed module source code. In case of a source code distribution (sdist) also the setup.py script will be fixed with the correct version.
 
 ### Automatic revision
 
@@ -121,4 +122,29 @@ File build/lib/my_module.py updated with version 2.32.
 # grep "^__" build/lib/my_module.py
 __version__ = "2.32"
 __revision__ = "3ca9bd6"
+```
+
+### Conditional build
+
+If your repository host multiple modules a build job may get triggered by your CI every time a change to the repo happens. This will produce the same build artifact every time. To solve this problem, this module include a new setup command `if_changed` that will prevent the execution of the build if the version didn't actually change. 
+
+**Please note** this command is not useful if you decide to adopt the jenkins build number method, since every build will appear as having a different version number.
+
+To use this functionality you first need to add the following section in your `setup.cfg`:
+
+	[if_changed]
+	last_version_file = .version
+
+This instruct the module to save the last build number in the specified file (in this case `.version`) every time you perform a build. After this configuration is in place you can try to build adding the command `if_changed` before your build command as in this example:
+
+```bash
+$ python setup.py if_changed bdist	# first time build succeed
+running if_changed
+running bdist
+..
+Creating tar archive
+
+$ python setup.py if_changed bdist # second time build skipped
+running if_changed
+Version 0.2.8dev not changed. Build stopped, remove 'if_changed' to force.
 ```
