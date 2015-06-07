@@ -169,6 +169,8 @@ def version_file(version, source=True):
 
 def validate_version(dist, attr, value):
     original_version = dist.metadata.version
+    if original_version is None:
+        return
     src_version_file = version_file(original_version)
     if not src_version_file.endswith(".py"):
         return
