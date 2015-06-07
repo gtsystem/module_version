@@ -12,7 +12,7 @@ from distutils.errors import DistutilsOptionError
 
 RE_VERSION = re.compile(br'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
 RE_REVISION = re.compile(br'^__revision__\s*=\s*[\'"][\'"]', re.M)
-RE_SETUP = re.compile(br'([(,]\s*version\s*=\s*)([(].*?[)]|[^,)]+)', re.M + re.S)
+RE_SETUP = re.compile(br'([(,]\s*version\s*=\s*)[^,)]+', re.M + re.S)
 
 
 def get_version(fname):
@@ -116,6 +116,13 @@ def subclassed_build_py(_build_py):
             version_file = getattr(self.distribution.metadata, "version_file", None)
             if version_file is None:
                 return
+            for (package, module, source) in self.find_all_modules():
+                if source == version_file:
+                    parts = package.split(".")
+                    parts.append("{}.py".format(module))
+                    version_file = os_path.join(*parts)
+                    break
+                
             version = self.distribution.metadata.version
             fname = os_path.join(self.build_lib, version_file)
             replace_info_file(fname, version, Version.revision)
@@ -134,7 +141,6 @@ def subclassed_sdist(_sdist):
             self.set_undefined_options('if_changed', ('last_version_file', 'last_version_file'))
 
         def make_release_tree(self, base_dir, files):
-            print files
             version_file = getattr(self.distribution.metadata, "version_file", None)
             _sdist.make_release_tree(self, base_dir, files)
             if version_file is None:
@@ -160,11 +166,11 @@ class BuildIfChanged(Command):
         self.last_version_file = None
         
     def finalize_options(self):
+        pass
+        
+    def run(self):
         if self.last_version_file is None:
             raise DistutilsOptionError("Parameter 'last_version_file' is required for command 'is_changed'")
-
-    def run(self):
-        print self.last_version_file
         version = self.distribution.metadata.version
         if self.last_version_file and os_path.isfile(self.last_version_file):
             with open(self.last_version_file, "r") as f:
@@ -176,21 +182,14 @@ class BuildIfChanged(Command):
             print "Version changed from {} to {}".format(last_version, version)
 
 
-def version_file(version, source=True):
-    if isinstance(version, tuple):
-        return version[0] if source else version[1]
-    return version
-
-
 def validate_version(dist, attr, value):
     original_version = dist.metadata.version
     if original_version is None:
         return
-    src_version_file = version_file(original_version)
-    if not src_version_file.endswith(".py"):
+    if not original_version.endswith(".py"):
         return
-    dist.metadata.version_file = version_file(original_version, source=False)
-    original_version = get_version(src_version_file)
+    dist.metadata.version_file = original_version
+    original_version = get_version(original_version)
     dist.metadata.version = Version.format(original_version)
     
     if "setuptools" in sys.modules:
