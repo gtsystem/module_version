@@ -128,7 +128,7 @@ def subclassed_build_py(_build_py):
 def subclassed_sdist(_sdist):
     class sdist(_sdist):
         def initialize_options(self):
-            _build_py.initialize_options(self)
+            _sdist.initialize_options(self)
             self.last_version_file = None
             self.set_undefined_options('if_changed', ('last_version_file', 'last_version_file'))
 
