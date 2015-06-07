@@ -12,6 +12,7 @@ from distutils.errors import DistutilsOptionError
 
 RE_VERSION = re.compile(br'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', re.M)
 RE_REVISION = re.compile(br'^__revision__\s*=\s*[\'"][\'"]', re.M)
+RE_SETUP = re.compile(br'([(,]\s*version\s*=\s*)([(].*?[)]|[^,)]+)', re.M + re.S)
 
 
 def get_version(fname):
@@ -21,7 +22,16 @@ def get_version(fname):
     if g is None:
         raise Exception("No version found in {}".format(fname))
     return g.group(1)
-    
+
+
+def replace_setup_file(fname, version):
+    with open(fname, "rb") as f:
+        content = f.read()
+    content = RE_SETUP.sub(b"\\1'{}'".format(version), content, count=1)
+    os.unlink(fname)
+    with open(fname, "wb") as f:
+        f.write(content)
+
 
 def replace_info_file(fname, version, revision):
     with open(fname, "rb") as f:
@@ -132,11 +142,13 @@ def subclassed_sdist(_sdist):
             fname = os_path.join(base_dir, version_file)
             version = self.distribution.metadata.version
             replace_info_file(fname, version, Version.revision)
+            replace_setup_file(os_path.join(base_dir, "setup.py"), version)
             if self.last_version_file:
                 write_version(self.last_version_file, version)
             print "File {} updated with version {}".format(fname, version)
     
     return sdist
+
 
 class BuildIfChanged(Command):
     """setuptools Command"""
