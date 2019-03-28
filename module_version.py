@@ -27,7 +27,7 @@ def get_version(fname):
 def replace_setup_file(fname, version):
     with open(fname, "rb") as f:
         content = f.read()
-    content = RE_SETUP.sub(b"\\1'{}'".format(version), content, count=1)
+    content = RE_SETUP.sub("\\1'{}'".format(version).encode("ascii"), content, count=1)
     os.unlink(fname)
     with open(fname, "wb") as f:
         f.write(content)
@@ -36,9 +36,9 @@ def replace_setup_file(fname, version):
 def replace_info_file(fname, version, revision):
     with open(fname, "rb") as f:
         content = f.read()
-    content = RE_VERSION.sub(b"__version__ = '{}'".format(version), content, count=1)
+    content = RE_VERSION.sub("__version__ = '{}'".format(version).encode("ascii"), content, count=1)
     def rev(arg):
-        return b"__revision__ = '{}'".format(revision(), count=1)
+        return "__revision__ = '{}'".format(revision(), count=1).encode("ascii")
     content = RE_REVISION.sub(rev, content)
     os.unlink(fname)
     with open(fname, "wb") as f:
@@ -46,7 +46,7 @@ def replace_info_file(fname, version, revision):
 
 def write_version(fname, version):
     with open(fname, "wb") as f:
-        f.write(version)
+        f.write(version.encode("ascii"))
 
 
 class LazyFormat(object):
@@ -66,7 +66,7 @@ class Version(object):
     def version_from_parts(major=None, minor=None, dirty=None):
         parts = []
         if major:
-            parts.append(major)
+            parts.append(major.decode("ascii"))
         if minor or dirty:
             parts.append("{}{}".format(minor if minor else "0", "dev" if dirty else ""))
         return ".".join(parts)
@@ -74,13 +74,13 @@ class Version(object):
     @classmethod
     def tag(cls):
         version = subprocess.check_output("git describe --tags --dirty --always", shell=True).strip()
-        parts = version.split("-")
+        parts = version.split(b"-")
         dirty = minor = None 
-        if parts[-1] == "dirty":
+        if parts[-1] == b"dirty":
             parts = parts[:-1]
             dirty = True  
 
-        major = parts[0].lstrip("v")
+        major = parts[0].lstrip(b"v")
         if len(parts) > 1:
             minor = parts[1]
     
@@ -89,7 +89,7 @@ class Version(object):
     @staticmethod
     def revision():
         revision = subprocess.check_output("git rev-parse --short `git rev-list -1 HEAD -- .`", shell=True).strip()
-        return revision
+        return revision.decode("ascii")
     
     @classmethod
     def commits(cls):
@@ -101,7 +101,7 @@ class Version(object):
     def format(cls, version):
         attribs = ('jenkins', 'tag', 'commits')
         attribs = { attrib: LazyFormat(getattr(cls, attrib)) for attrib in attribs}
-        return version.format(**attribs)
+        return version.decode("ascii").format(**attribs)
 
 
 def subclassed_build_py(_build_py):
@@ -128,7 +128,7 @@ def subclassed_build_py(_build_py):
             replace_info_file(fname, version, Version.revision)
             if self.last_version_file:
                 write_version(self.last_version_file, version)
-            print "File {} updated with version {}".format(fname, version)
+            print("File {} updated with version {}".format(fname, version))
     
     return build_py
 
@@ -152,7 +152,7 @@ def subclassed_sdist(_sdist):
             replace_setup_file(os_path.join(base_dir, "setup.py"), version)
             if self.last_version_file:
                 write_version(self.last_version_file, version)
-            print "File {} updated with version {}".format(fname, version)
+            print("File {} updated with version {}".format(fname, version))
     
     return sdist
 
@@ -177,9 +177,9 @@ class BuildIfChanged(Command):
                 last_version = f.read().strip()
     
             if last_version == version:
-                print "Version {} not changed. Build stopped, remove 'if_changed' to force.".format(last_version)
+                print("Version {} not changed. Build stopped, remove 'if_changed' to force.".format(last_version))
                 sys.exit()
-            print "Version changed from {} to {}".format(last_version, version)
+            print("Version changed from {} to {}".format(last_version, version))
 
 
 def validate_version(dist, attr, value):
