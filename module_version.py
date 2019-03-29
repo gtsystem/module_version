@@ -68,7 +68,7 @@ class Version(object):
         if major:
             parts.append(major.decode("ascii"))
         if minor or dirty:
-            parts.append("{}{}".format(minor if minor else "0", "dev" if dirty else ""))
+            parts.append("{}{}".format(minor.decode("ascii") if minor else "0", "dev" if dirty else ""))
         return ".".join(parts)
     
     @classmethod
